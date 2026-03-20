@@ -24,6 +24,7 @@ const screens = {
     landing: document.getElementById('landing-screen'),
     lobby: document.getElementById('lobby-screen'),
     submit: document.getElementById('submit-screen'),
+    review: document.getElementById('team-review-screen'),
     game: document.getElementById('game-screen')
 };
 
@@ -87,7 +88,6 @@ socket.on('roomJoined', ({ roomCode, isHost: hostStatus, roomData }) => {
 });
 
 socket.on('updateRoom', (roomData) => {
-    // Dynamically update host status (In case Sharky joins or host disconnects)
     isHost = (roomData.host === myName);
     
     if (isHost && roomData.state === 'lobby') {
@@ -101,7 +101,7 @@ socket.on('updateRoom', (roomData) => {
 
 function renderLobbyOrGame(roomData) {
     if (roomData.state === 'lobby') {
-        updateRoster(roomData);
+        updateLobbyRoster(roomData);
         showScreen('lobby');
     } else if (roomData.state === 'submitting') {
         if (!roomData.players[myName].wordsSubmitted && document.getElementById('word-inputs').innerHTML === '') {
@@ -109,13 +109,16 @@ function renderLobbyOrGame(roomData) {
         }
         updateStatusRoster(roomData);
         showScreen('submit');
+    } else if (roomData.state === 'team_review') {
+        renderTeamReview(roomData);
+        showScreen('review');
     } else if (roomData.state === 'playing') {
         updateGameUI(roomData);
         showScreen('game');
     }
 }
 
-function updateRoster(roomData) {
+function updateLobbyRoster(roomData) {
     const rosterDiv = document.getElementById('player-roster');
     rosterDiv.innerHTML = '';
     
@@ -124,35 +127,13 @@ function updateRoster(roomData) {
         const isOnline = pInfo.online ? '' : '<span class="text-red-500 text-xs">(Offline)</span>';
         const hostCrown = pName === roomData.host ? '👑' : '';
         
-        let teamText = pInfo.team === -1 ? 'Unassigned' : `Team ${pInfo.team + 1}`;
-        let teamSelectHtml = `<span class="text-sm text-gray-500">${teamText}</span>`;
-        
-        // Only host can assign teams manually in the lobby
-        if (isHost) {
-            let options = `<option value="-1" ${pInfo.team === -1 ? 'selected' : ''}>Unassigned</option>`;
-            for(let i = 0; i < roomData.settings.numTeams; i++) {
-                options += `<option value="${i}" ${pInfo.team === i ? 'selected' : ''}>Team ${i + 1}</option>`;
-            }
-            teamSelectHtml = `<select class="team-selector bg-gray-100 border rounded px-1 text-sm" data-player="${pName}">${options}</select>`;
-        }
-
         rosterDiv.innerHTML += `
             <div class="flex justify-between items-center py-2 border-b last:border-0">
                 <span class="font-medium">${pName} ${hostCrown} ${isOnline}</span>
-                ${teamSelectHtml}
+                <span class="text-sm text-gray-500">Unassigned</span>
             </div>
         `;
     });
-
-    if (isHost) {
-        document.querySelectorAll('.team-selector').forEach(sel => {
-            sel.addEventListener('change', (e) => {
-                const targetPlayer = e.target.getAttribute('data-player');
-                const newTeamIndex = parseInt(e.target.value);
-                socket.emit('assignTeam', { roomCode: myRoom, targetPlayer, newTeamIndex });
-            });
-        });
-    }
 }
 
 function updateStatusRoster(roomData) {
@@ -204,7 +185,6 @@ document.getElementById('btn-submit-words').addEventListener('click', () => {
     document.getElementById('waiting-area').classList.remove('hidden');
 });
 
-// Hurry Up Logic
 document.getElementById('btn-hurry-up').addEventListener('click', () => {
     socket.emit('sendHurryUp', myRoom);
     document.getElementById('btn-hurry-up').innerText = "Nudge Sent!";
@@ -214,21 +194,76 @@ document.getElementById('btn-hurry-up').addEventListener('click', () => {
         document.getElementById('btn-hurry-up').innerText = '📣 Send "Hurry Up" Nudge';
         document.getElementById('btn-hurry-up').classList.remove('bg-gray-400');
         document.getElementById('btn-hurry-up').disabled = false;
-    }, 5000); // Prevent spamming
+    }, 5000);
 });
 
 socket.on('receiveHurryUp', () => {
     const toast = document.getElementById('toast-container');
     toast.classList.remove('hidden');
-    playBeep(300, 0.2, 'square'); // Aggressive beep
+    playBeep(300, 0.2, 'square'); 
     setTimeout(() => playBeep(300, 0.2, 'square'), 250);
-    
-    setTimeout(() => {
-        toast.classList.add('hidden');
-    }, 3000);
+    setTimeout(() => toast.classList.add('hidden'), 3000);
 });
 
-// Gameplay
+// --- NEW: Team Review Logic ---
+function renderTeamReview(roomData) {
+    const rosterDiv = document.getElementById('team-review-roster');
+    rosterDiv.innerHTML = '';
+
+    roomData.teams.forEach((team, teamIndex) => {
+        let membersHtml = team.members.map(pName => {
+            const hostCrown = pName === roomData.host ? '👑' : '';
+            
+            // If user is host, show dropdown to allow trades. Otherwise just show text.
+            let controlHtml = '';
+            if (isHost) {
+                let options = '';
+                for(let i = 0; i < roomData.settings.numTeams; i++) {
+                    options += `<option value="${i}" ${teamIndex === i ? 'selected' : ''}>Move to ${roomData.teams[i].name}</option>`;
+                }
+                controlHtml = `<select class="review-team-selector bg-gray-100 border rounded px-1 text-xs py-1" data-player="${pName}">${options}</select>`;
+            }
+
+            return `
+                <div class="flex justify-between items-center py-2 border-b last:border-0">
+                    <span class="font-medium text-gray-700">${pName} ${hostCrown}</span>
+                    ${controlHtml}
+                </div>
+            `;
+        }).join('');
+
+        if (team.members.length === 0) membersHtml = `<div class="text-sm text-gray-400 italic py-2">No members</div>`;
+
+        rosterDiv.innerHTML += `
+            <div class="bg-white border-2 border-indigo-100 rounded-xl p-4 shadow-sm">
+                <h3 class="font-black text-lg text-indigo-700 border-b-2 border-indigo-50 pb-2 mb-2">${team.name}</h3>
+                <div class="space-y-1">${membersHtml}</div>
+            </div>
+        `;
+    });
+
+    if (isHost) {
+        document.getElementById('host-start-controls').classList.remove('hidden');
+        document.getElementById('waiting-for-host-start').classList.add('hidden');
+        
+        document.querySelectorAll('.review-team-selector').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const targetPlayer = e.target.getAttribute('data-player');
+                const newTeamIndex = parseInt(e.target.value);
+                socket.emit('assignTeam', { roomCode: myRoom, targetPlayer, newTeamIndex });
+            });
+        });
+    } else {
+        document.getElementById('host-start-controls').classList.add('hidden');
+        document.getElementById('waiting-for-host-start').classList.remove('hidden');
+    }
+}
+
+document.getElementById('btn-confirm-teams').addEventListener('click', () => {
+    socket.emit('confirmTeamsAndStart', myRoom);
+});
+
+// --- Gameplay ---
 socket.on('startRound', (roomData) => {
     updateGameUI(roomData);
     showScreen('game');
@@ -239,7 +274,11 @@ function updateGameUI(roomData) {
     document.getElementById('displayRound').innerText = roundNames[roomData.round - 1];
     
     const scoreboard = document.getElementById('scoreboard');
-    scoreboard.innerHTML = roomData.teams.map((t, i) => `<div>T${i+1}: <span class="text-indigo-600">${t.score}</span></div>`).join('');
+    // Display Cute Names in Scoreboard (Truncated if too long)
+    scoreboard.innerHTML = roomData.teams.map(t => {
+        const shortName = t.name.length > 10 ? t.name.substring(0, 8) + '...' : t.name;
+        return `<div>${shortName}: <span class="text-indigo-600">${t.score}</span></div>`;
+    }).join('');
     
     const currentTeam = roomData.teams[roomData.turn.teamIndex];
     if(currentTeam.members.length === 0) return; 
@@ -247,7 +286,7 @@ function updateGameUI(roomData) {
     const activePlayerName = currentTeam.members[roomData.turn.playerIndex];
     const isMyTurn = activePlayerName === myName;
 
-    document.getElementById('turn-indicator').innerText = isMyTurn ? "It's your turn!" : `${activePlayerName}'s Turn (Team ${roomData.turn.teamIndex + 1})`;
+    document.getElementById('turn-indicator').innerText = isMyTurn ? "It's your turn!" : `${activePlayerName}'s Turn (${currentTeam.name})`;
 
     document.getElementById('active-player-view').classList.add('hidden');
     document.getElementById('waiting-player-view').classList.remove('hidden');
@@ -317,7 +356,7 @@ socket.on('roundOver', (roomData) => {
 
 socket.on('gameOver', (roomData) => {
     clearInterval(turnInterval);
-    let scores = roomData.teams.map((t, i) => `Team ${i+1}: ${t.score}`).join('\n');
+    let scores = roomData.teams.map((t, i) => `${t.name}: ${t.score}`).join('\n');
     alert(`Game Over!\n\n${scores}`);
     localStorage.removeItem('niab_roomCode'); 
 });
