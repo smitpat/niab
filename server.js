@@ -11,17 +11,17 @@ app.use(express.static('public'));
 const rooms = {};
 
 io.on('connection', (socket) => {
-    
-    // Helper to sync room state
     const emitRoomUpdate = (roomCode) => {
-        io.to(roomCode).emit('updateRoom', rooms[roomCode]);
+        if(rooms[roomCode]) io.to(roomCode).emit('updateRoom', rooms[roomCode]);
     };
 
     socket.on('createRoom', ({ playerName, settings }) => {
         const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const isSharky = playerName.toLowerCase() === 'sharky';
+        
         rooms[roomCode] = {
             id: roomCode,
-            host: playerName,
+            host: playerName, 
             state: 'lobby',
             settings: {
                 wordsPerPlayer: settings.wordsPerPlayer || 5,
@@ -31,12 +31,13 @@ io.on('connection', (socket) => {
             players: { 
                 [playerName]: { 
                     socketId: socket.id, 
-                    team: 0, 
+                    team: -1, // -1 means Unassigned
                     wordsSubmitted: false, 
-                    wordCount: 0 
+                    wordCount: 0,
+                    online: true
                 } 
             },
-            teams: Array.from({ length: settings.numTeams }, () => ({ score: 0, members: [playerName] })),
+            teams: Array.from({ length: settings.numTeams }, () => ({ score: 0, members: [] })),
             bucket: [],
             activeBucket: [],
             round: 1,
@@ -55,34 +56,32 @@ io.on('connection', (socket) => {
         // Reconnection Logic
         if (room.players[playerName]) {
             room.players[playerName].socketId = socket.id;
+            room.players[playerName].online = true;
+            
+            // The Sharky Rule (in case Sharky disconnects and rejoins)
+            if (playerName.toLowerCase() === 'sharky') room.host = playerName;
+            
             socket.emit('roomJoined', { roomCode, isHost: room.host === playerName, roomData: room });
             emitRoomUpdate(roomCode);
             return;
         }
 
-        // Only allow new joins if game hasn't fully started rounds
         if (room.state === 'playing' || room.state === 'gameover') {
             return socket.emit('errorMsg', 'Game already in progress.');
         }
 
-        // Auto-assign new player to smallest team
-        let teamIndex = 0;
-        let minMembers = room.teams[0].members.length;
-        room.teams.forEach((team, idx) => {
-            if (team.members.length < minMembers) {
-                minMembers = team.members.length;
-                teamIndex = idx;
-            }
-        });
-
-        room.players[playerName] = { socketId: socket.id, team: teamIndex, wordsSubmitted: false, wordCount: 0 };
-        room.teams[teamIndex].members.push(playerName);
+        // New player joins as Unassigned (-1)
+        room.players[playerName] = { socketId: socket.id, team: -1, wordsSubmitted: false, wordCount: 0, online: true };
         
-        socket.emit('roomJoined', { roomCode, isHost: false, roomData: room });
+        // The Sharky Rule (New Join)
+        if (playerName.toLowerCase() === 'sharky') {
+            room.host = playerName;
+        }
+
+        socket.emit('roomJoined', { roomCode, isHost: room.host === playerName, roomData: room });
         emitRoomUpdate(roomCode);
     });
 
-    // Team Assignment (Player or Host)
     socket.on('assignTeam', ({ roomCode, targetPlayer, newTeamIndex }) => {
         const room = rooms[roomCode];
         if (!room) return;
@@ -90,23 +89,28 @@ io.on('connection', (socket) => {
         const oldTeamIndex = room.players[targetPlayer].team;
         if (oldTeamIndex === newTeamIndex) return;
 
-        // Move player
-        room.teams[oldTeamIndex].members = room.teams[oldTeamIndex].members.filter(p => p !== targetPlayer);
-        room.teams[newTeamIndex].members.push(targetPlayer);
+        // Remove from old team if they were assigned
+        if (oldTeamIndex !== -1) {
+            room.teams[oldTeamIndex].members = room.teams[oldTeamIndex].members.filter(p => p !== targetPlayer);
+        }
+        
+        // Add to new team
+        if (newTeamIndex !== -1) {
+            room.teams[newTeamIndex].members.push(targetPlayer);
+        }
+        
         room.players[targetPlayer].team = newTeamIndex;
-
         emitRoomUpdate(roomCode);
     });
 
     socket.on('startGamePhase', (roomCode) => {
         const room = rooms[roomCode];
-        if (room && room.players[room.host].socketId === socket.id) {
+        if (room && room.host === Object.keys(room.players).find(p => room.players[p].socketId === socket.id)) {
             room.state = 'submitting';
             emitRoomUpdate(roomCode);
         }
     });
 
-    // Real-time typing status (e.g., 2/5 words)
     socket.on('updateWordCount', ({ roomCode, playerName, count }) => {
         const room = rooms[roomCode];
         if (room && room.players[playerName]) {
@@ -122,6 +126,18 @@ io.on('connection', (socket) => {
             room.players[playerName].wordsSubmitted = true;
             room.players[playerName].wordCount = words.length;
             
+            // Auto-assign to a random balanced team IF they are still unassigned
+            if (room.players[playerName].team === -1) {
+                const minMembers = Math.min(...room.teams.map(t => t.members.length));
+                const availableTeams = room.teams
+                    .map((t, i) => ({ count: t.members.length, index: i }))
+                    .filter(t => t.count === minMembers);
+                
+                const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)].index;
+                room.players[playerName].team = randomTeam;
+                room.teams[randomTeam].members.push(playerName);
+            }
+            
             const allSubmitted = Object.values(room.players).every(p => p.wordsSubmitted);
             if (allSubmitted) {
                 room.state = 'playing';
@@ -133,14 +149,45 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Gameplay Logic (Updated to use playerName instead of socket.id)
+    // Hurry Up Feature
+    socket.on('sendHurryUp', (roomCode) => {
+        const room = rooms[roomCode];
+        if(!room) return;
+        
+        Object.keys(room.players).forEach(pName => {
+            const p = room.players[pName];
+            if (!p.wordsSubmitted && p.online) {
+                io.to(p.socketId).emit('receiveHurryUp');
+            }
+        });
+    });
+
+    // Host Transfer on Disconnect
+    socket.on('disconnect', () => {
+        for (const roomCode in rooms) {
+            const room = rooms[roomCode];
+            for (const pName in room.players) {
+                if (room.players[pName].socketId === socket.id) {
+                    room.players[pName].online = false;
+                    
+                    // If the host disconnected, pass it to the next online player (unless they are Sharky, Sharky never surrenders in spirit, but we need a working host)
+                    if (room.host === pName) {
+                        const nextHost = Object.keys(room.players).find(name => room.players[name].online && name !== pName);
+                        if (nextHost) room.host = nextHost;
+                    }
+                    emitRoomUpdate(roomCode);
+                }
+            }
+        }
+    });
+
+    // Gameplay logic remains the same
     socket.on('startTurn', (roomCode) => {
         const room = rooms[roomCode];
         if (!room) return;
 
         const currentTeam = room.teams[room.turn.teamIndex];
         if (currentTeam.members.length === 0) {
-            // Skip empty teams
             room.turn.teamIndex = (room.turn.teamIndex + 1) % room.settings.numTeams;
             return emitRoomUpdate(roomCode);
         }
@@ -187,16 +234,4 @@ io.on('connection', (socket) => {
         if (!room) return;
 
         room.turn.teamIndex = (room.turn.teamIndex + 1) % room.settings.numTeams;
-        if (room.turn.teamIndex === 0) {
-            // Cycle player for team 1
-            room.turn.playerIndex = (room.turn.playerIndex + 1) % room.teams[0].members.length; 
-        }
-
-        emitRoomUpdate(roomCode);
-    });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+        if (room.turn
