@@ -6,7 +6,6 @@
     <title>Nouns in a Bucket</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Animation for the hurry up toast */
         @keyframes slideDown {
             0% { transform: translateY(-100%); opacity: 0; }
             100% { transform: translateY(0); opacity: 1; }
@@ -58,7 +57,7 @@
                 <div id="player-roster" class="space-y-2 max-h-48 overflow-y-auto"></div>
             </div>
 
-            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-4 text-xl rounded-lg shadow active:bg-green-600 mt-4">Start Game</button>
+            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-4 text-xl rounded-lg shadow active:bg-green-600 mt-4">Lock Lobby & Write Words</button>
         </div>
 
         <div id="submit-screen" class="hidden space-y-4">
@@ -76,6 +75,23 @@
             <div id="submission-status" class="bg-gray-50 p-4 rounded-lg border mt-6">
                 <h3 class="font-bold text-sm text-gray-500 mb-2">Word Progress</h3>
                 <div id="status-roster" class="space-y-1 text-sm"></div>
+            </div>
+        </div>
+
+        <div id="team-review-screen" class="hidden space-y-4">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-black text-indigo-600">The Teams are Set!</h2>
+                <p class="text-gray-500 text-sm">Host can make final trades before starting.</p>
+            </div>
+            
+            <div id="team-review-roster" class="space-y-4">
+                </div>
+
+            <div id="host-start-controls" class="hidden mt-6">
+                <button id="btn-confirm-teams" class="w-full bg-green-500 text-white font-black p-4 text-xl rounded-xl shadow-lg active:bg-green-600 border-b-4 border-green-700">Lock Teams & Start Game</button>
+            </div>
+            <div id="waiting-for-host-start" class="text-center text-gray-500 font-bold hidden mt-6 bg-gray-100 p-4 rounded-lg">
+                Waiting for Host to start the game...
             </div>
         </div>
 
