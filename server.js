@@ -31,7 +31,10 @@ io.on('connection', (socket) => {
             settings: { wordsPerPlayer: settings.wordsPerPlayer || 5, baseTime: settings.baseTime || 60, numTeams: settings.numTeams || 2 },
             players: { [playerName]: { socketId: socket.id, team: -1, wordsSubmitted: false, wordCount: 0, online: true } },
             teams: Array.from({ length: settings.numTeams }, (_, i) => ({ name: shuffledNames[i] || `Team ${i+1}`, score: 0, members: [] })),
-            bucket: [], activeBucket: [], round: 1, turn: { teamIndex: 0, playerIndex: 0 }
+            bucket: [], activeBucket: [], round: 1, 
+            // NEW: Individual trackers for every team so odd-number teams cycle perfectly
+            turn: { teamIndex: 0, playerIndices: Array.from({ length: settings.numTeams || 2 }, () => 0) },
+            carryOver: null
         };
         socket.join(roomCode);
         socket.emit('roomJoined', { roomCode, isHost: true, roomData: rooms[roomCode] });
@@ -145,22 +148,31 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- GAMEPLAY CORE ---
     socket.on('startTurn', (roomCode) => {
         const room = rooms[roomCode];
         if (!room) return;
-        const currentTeam = room.teams[room.turn.teamIndex];
+        
+        const currentTeamIdx = room.turn.teamIndex;
+        const currentTeam = room.teams[currentTeamIdx];
+        
         if (currentTeam.members.length === 0) {
             room.turn.teamIndex = (room.turn.teamIndex + 1) % room.settings.numTeams;
             return emitRoomUpdate(roomCode);
         }
-        const maxTeamSize = Math.max(...room.teams.map(t => t.members.length));
+
         let allocatedTime = room.settings.baseTime;
-        if (currentTeam.members.length > 0 && currentTeam.members.length < maxTeamSize) {
-            allocatedTime = Math.round(room.settings.baseTime * (maxTeamSize / currentTeam.members.length));
+        
+        // Check if there is carry-over time for this team
+        if (room.carryOver && room.carryOver.teamIndex === currentTeamIdx) {
+            allocatedTime = room.carryOver.time;
+            room.carryOver = null; // Clear it so subsequent turns use baseTime
         }
-        const activePlayerName = currentTeam.members[room.turn.playerIndex];
+
+        const activePlayerName = currentTeam.members[room.turn.playerIndices[currentTeamIdx]];
+        
         io.to(roomCode).emit('turnStarted', {
-            time: allocatedTime, activeTeam: room.turn.teamIndex, activePlayerName: activePlayerName, word: room.activeBucket[0]
+            time: allocatedTime, activeTeam: currentTeamIdx, activePlayerName: activePlayerName, word: room.activeBucket[0]
         });
     });
 
@@ -185,11 +197,16 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('nextWord', room.activeBucket[0]);
     });
 
-    socket.on('wordGuessed', (roomCode) => {
+    // NEW: Accepts timeLeft parameter to calculate carry-over
+    socket.on('wordGuessed', (data) => {
+        let roomCode = data.roomCode;
+        let timeLeft = data.timeLeft || 0;
+        
         const room = rooms[roomCode];
         if (!room) return;
         room.teams[room.turn.teamIndex].score += 1;
         room.activeBucket.shift();
+        
         if (room.activeBucket.length === 0) {
             room.round += 1;
             if (room.round > 3) {
@@ -197,6 +214,14 @@ io.on('connection', (socket) => {
                 io.to(roomCode).emit('gameOver', room);
             } else {
                 room.activeBucket = [...room.bucket].sort(() => Math.random() - 0.5);
+                
+                // Set Carry-Over State
+                if (timeLeft > 0) {
+                    room.carryOver = { time: timeLeft, teamIndex: room.turn.teamIndex };
+                } else {
+                    room.carryOver = null;
+                }
+                
                 io.to(roomCode).emit('roundOver', room);
             }
         } else {
@@ -207,10 +232,16 @@ io.on('connection', (socket) => {
     socket.on('endTurn', (roomCode) => {
         const room = rooms[roomCode];
         if (!room) return;
-        room.turn.teamIndex = (room.turn.teamIndex + 1) % room.settings.numTeams;
-        if (room.turn.teamIndex === 0 && room.teams[0].members.length > 0) {
-            room.turn.playerIndex = (room.turn.playerIndex + 1) % room.teams[0].members.length; 
+        
+        const currentTeamIdx = room.turn.teamIndex;
+        
+        // Only advance the player index for the team that just went
+        if (room.teams[currentTeamIdx].members.length > 0) {
+            room.turn.playerIndices[currentTeamIdx] = (room.turn.playerIndices[currentTeamIdx] + 1) % room.teams[currentTeamIdx].members.length; 
         }
+        
+        // Pass the turn to the next team
+        room.turn.teamIndex = (currentTeamIdx + 1) % room.settings.numTeams;
         emitRoomUpdate(roomCode);
     });
 });
