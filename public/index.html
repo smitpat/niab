@@ -6,12 +6,13 @@
     <title>Nouns in a Bucket</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-900 font-sans antialiased p-4">
+<body class="bg-gray-100 text-gray-900 font-sans antialiased p-4 pb-16">
     <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 mt-4">
         <h1 class="text-3xl font-bold text-center text-indigo-600 mb-6">Nouns in a Bucket</h1>
 
         <div id="landing-screen" class="space-y-4">
             <input type="text" id="playerName" placeholder="Your Name" class="w-full p-3 border rounded-lg text-lg">
+            <button id="btn-rejoin" class="hidden w-full bg-yellow-500 text-white font-bold p-3 rounded-lg shadow mt-2">Rejoin Active Game</button>
             
             <div class="border-t pt-4">
                 <h3 class="font-bold mb-2">Join Game</h3>
@@ -34,24 +35,39 @@
         </div>
 
         <div id="lobby-screen" class="hidden space-y-4 text-center">
-            <h2 class="text-2xl font-bold">Room Code: <span id="displayRoomCode" class="text-indigo-600"></span></h2>
-            <p id="playerCount" class="text-gray-500">Waiting for players...</p>
-            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-3 rounded-lg shadow active:bg-green-600">Start Writing Words</button>
+            <h2 class="text-2xl font-bold mb-4">Waiting in Lobby...</h2>
+            
+            <div class="bg-gray-50 p-4 rounded-lg border text-left">
+                <h3 class="font-bold border-b pb-2 mb-2 text-gray-700">Players Joined</h3>
+                <div id="player-roster" class="space-y-2 max-h-48 overflow-y-auto">
+                    </div>
+            </div>
+
+            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-3 rounded-lg shadow active:bg-green-600 mt-4">Start Writing Words</button>
         </div>
 
         <div id="submit-screen" class="hidden space-y-4">
             <h2 class="text-xl font-bold text-center">Enter your Nouns!</h2>
             <div id="word-inputs" class="space-y-2"></div>
             <button id="btn-submit-words" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow">Toss in Bucket</button>
-            <p id="waiting-msg" class="hidden text-center text-gray-500">Waiting for others to finish...</p>
+            
+            <div id="submission-status" class="bg-gray-50 p-4 rounded-lg border mt-6">
+                <h3 class="font-bold text-sm text-gray-500 mb-2">Word Progress</h3>
+                <div id="status-roster" class="space-y-1 text-sm">
+                    </div>
+            </div>
         </div>
 
         <div id="game-screen" class="hidden flex flex-col items-center space-y-6">
             <div class="w-full flex justify-between text-lg font-bold border-b pb-2">
                 <span id="displayRound" class="text-blue-600">Round 1</span>
-                <span id="displayTimer" class="text-red-500">00:00</span>
+                <span id="displayTimer" class="text-red-500 text-2xl">00:00</span>
             </div>
-            <h2 id="turn-indicator" class="text-2xl font-bold text-center"></h2>
+            
+            <div id="scoreboard" class="flex justify-center space-x-4 w-full text-sm font-bold text-gray-600">
+                </div>
+
+            <h2 id="turn-indicator" class="text-2xl font-bold text-center mt-4"></h2>
             
             <div id="active-player-view" class="hidden w-full space-y-4 flex flex-col items-center">
                 <div id="current-word" class="text-4xl font-black py-8 text-center text-indigo-700 w-full bg-indigo-50 rounded-xl">WORD</div>
@@ -65,6 +81,11 @@
             </div>
         </div>
     </div>
+
+    <div id="game-banner" class="hidden fixed bottom-0 left-0 w-full bg-slate-800 text-white text-center p-2 text-sm shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
+        Room Code: <span id="bannerRoomCode" class="font-bold text-indigo-300 tracking-wider"></span> | Playing as <span id="bannerPlayer" class="font-bold"></span>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
 </body>
