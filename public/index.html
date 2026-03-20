@@ -68,4 +68,61 @@
             </div>
             <div id="waiting-area" class="hidden space-y-4">
                 <div class="text-center p-4 bg-green-100 text-green-800 rounded-lg font-bold">Words Submitted!</div>
-                <button id="btn-hurry-up" class="w-full bg-red-500 text-white
+                <button id="btn-hurry-up" class="w-full bg-red-500 text-white font-bold p-3 rounded-lg shadow active:bg-red-600 transition-colors">📣 Send "Hurry Up" Nudge</button>
+            </div>
+            <div id="submission-status" class="bg-gray-50 p-4 rounded-lg border mt-6">
+                <h3 class="font-bold text-sm text-gray-500 mb-2">Word Progress</h3>
+                <div id="status-roster" class="space-y-1 text-sm"></div>
+            </div>
+        </div>
+
+        <div id="team-review-screen" class="hidden space-y-4">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-black text-indigo-600">The Teams are Set!</h2>
+                <p class="text-gray-500 text-sm">Host can make final trades before starting.</p>
+            </div>
+            <div id="team-review-roster" class="space-y-4"></div>
+            <div id="host-start-controls" class="hidden mt-6">
+                <button id="btn-confirm-teams" class="w-full bg-green-500 text-white font-black p-4 text-xl rounded-xl shadow-lg active:bg-green-600 border-b-4 border-green-700">Lock Teams & Start Game</button>
+            </div>
+            <div id="waiting-for-host-start" class="text-center text-gray-500 font-bold hidden mt-6 bg-gray-100 p-4 rounded-lg border">Waiting for Host to start the game...</div>
+        </div>
+
+        <div id="game-screen" class="hidden flex flex-col items-center space-y-6">
+            <div class="w-full flex justify-between items-center text-lg font-bold border-b pb-2">
+                <span id="displayRound" class="text-blue-600">Round 1</span>
+                <div class="flex items-center space-x-3">
+                    <span id="displayTimer" class="text-red-500 text-2xl font-black w-14 text-right">00:00</span>
+                    <button id="btn-pause" class="hidden bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-sm shadow font-bold active:bg-gray-300">⏸ Pause</button>
+                </div>
+            </div>
+            
+            <div id="scoreboard" class="flex justify-center space-x-6 w-full text-lg font-black bg-gray-100 p-3 rounded-xl border border-gray-300"></div>
+            <h2 id="turn-indicator" class="text-2xl font-bold text-center mt-2"></h2>
+            
+            <div id="active-player-view" class="hidden w-full space-y-4 flex flex-col items-center">
+                <div id="current-word" class="text-4xl font-black py-8 text-center text-indigo-700 w-full bg-indigo-50 rounded-xl border border-indigo-100">WORD</div>
+                <div class="flex w-full space-x-4">
+                    <button id="btn-got-it" class="w-full bg-green-500 text-white font-black p-4 rounded-xl shadow-lg text-2xl active:bg-green-600 border-b-4 border-green-700">Got It!</button>
+                </div>
+            </div>
+
+            <div id="waiting-player-view" class="w-full text-center py-8">
+                <button id="btn-start-turn" class="hidden w-full bg-indigo-500 text-white font-black p-4 rounded-xl shadow-lg text-2xl active:bg-indigo-600 border-b-4 border-indigo-700">▶️ Start Timer</button>
+                
+                <div id="teammate-controls" class="hidden w-full mt-4">
+                    <button id="btn-skip" class="w-full bg-orange-500 text-white font-bold p-4 rounded-xl shadow-lg text-xl active:bg-orange-600 border-b-4 border-orange-700">⏭ Skip Word</button>
+                    <p class="text-xs text-gray-500 mt-2">Only teammates can skip if the actor gets stuck.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-banner" class="hidden fixed bottom-0 left-0 w-full bg-slate-900 text-white text-center p-3 text-sm shadow-[0_-2px_10px_rgba(0,0,0,0.1)] z-50">
+        Room: <span id="bannerRoomCode" class="font-black text-indigo-300 tracking-widest text-base"></span> | Player: <span id="bannerPlayer" class="font-bold"></span>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
