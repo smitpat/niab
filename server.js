@@ -145,7 +145,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- GAMEPLAY CORE ---
     socket.on('startTurn', (roomCode) => {
         const room = rooms[roomCode];
         if (!room) return;
@@ -165,7 +164,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Pause Logic
     socket.on('pauseGame', ({ roomCode, timeLeft, playerName }) => {
         const room = rooms[roomCode];
         if (!room) return;
@@ -178,15 +176,12 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('gameResumed');
     });
 
-    // Skip Logic
     socket.on('skipWord', (roomCode) => {
         const room = rooms[roomCode];
-        if (!room || room.activeBucket.length <= 1) return; // Cannot skip if only 1 word left
+        if (!room || room.activeBucket.length <= 1) return; 
         
-        // Move word to the back of the line
         const skippedWord = room.activeBucket.shift();
         room.activeBucket.push(skippedWord);
-        
         io.to(roomCode).emit('nextWord', room.activeBucket[0]);
     });
 
