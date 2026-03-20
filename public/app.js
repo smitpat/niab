@@ -7,7 +7,6 @@ let myWordsReq = 5;
 let numTeams = 2;
 let turnInterval;
 
-// Check Local Storage for rejoining
 window.onload = () => {
     const savedName = localStorage.getItem('niab_playerName');
     const savedRoom = localStorage.getItem('niab_roomCode');
@@ -39,25 +38,21 @@ function showScreen(screenName) {
     }
 }
 
-// Audio Cue Generator (No external files needed)
-function playBeep(frequency = 800, duration = 0.1) {
+function playBeep(frequency = 800, duration = 0.1, type = 'sine') {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
+        osc.type = type;
         osc.frequency.setValueAtTime(frequency, ctx.currentTime);
         gain.gain.setValueAtTime(0.5, ctx.currentTime);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(ctx.currentTime + duration);
-    } catch (e) {
-        console.log("Audio not supported or muted.");
-    }
+    } catch (e) { console.log("Audio not supported"); }
 }
 
-// --- Setup ---
 document.getElementById('btn-create').addEventListener('click', () => {
     myName = document.getElementById('playerName').value || 'Host';
     const settings = {
@@ -87,13 +82,20 @@ socket.on('roomJoined', ({ roomCode, isHost: hostStatus, roomData }) => {
     localStorage.setItem('niab_playerName', myName);
     localStorage.setItem('niab_roomCode', myRoom);
 
-    if (isHost) document.getElementById('btn-start-submit').classList.remove('hidden');
-    
+    document.getElementById('displayRoomCode').innerText = roomCode;
     renderLobbyOrGame(roomData);
 });
 
-// --- State Management & UI Updates ---
 socket.on('updateRoom', (roomData) => {
+    // Dynamically update host status (In case Sharky joins or host disconnects)
+    isHost = (roomData.host === myName);
+    
+    if (isHost && roomData.state === 'lobby') {
+        document.getElementById('btn-start-submit').classList.remove('hidden');
+    } else {
+        document.getElementById('btn-start-submit').classList.add('hidden');
+    }
+
     renderLobbyOrGame(roomData);
 });
 
@@ -117,17 +119,17 @@ function updateRoster(roomData) {
     const rosterDiv = document.getElementById('player-roster');
     rosterDiv.innerHTML = '';
     
-    const players = Object.keys(roomData.players);
-    const allowTeamPick = players.length > 2;
-
-    players.forEach(pName => {
+    Object.keys(roomData.players).forEach(pName => {
         const pInfo = roomData.players[pName];
+        const isOnline = pInfo.online ? '' : '<span class="text-red-500 text-xs">(Offline)</span>';
+        const hostCrown = pName === roomData.host ? '👑' : '';
         
-        let teamSelectHtml = `<span class="text-sm text-gray-500">Team ${pInfo.team + 1}</span>`;
+        let teamText = pInfo.team === -1 ? 'Unassigned' : `Team ${pInfo.team + 1}`;
+        let teamSelectHtml = `<span class="text-sm text-gray-500">${teamText}</span>`;
         
-        // Show dropdown if it's the player themselves, OR if the current user is host
-        if (allowTeamPick && (pName === myName || isHost)) {
-            let options = '';
+        // Only host can assign teams manually in the lobby
+        if (isHost) {
+            let options = `<option value="-1" ${pInfo.team === -1 ? 'selected' : ''}>Unassigned</option>`;
             for(let i = 0; i < roomData.settings.numTeams; i++) {
                 options += `<option value="${i}" ${pInfo.team === i ? 'selected' : ''}>Team ${i + 1}</option>`;
             }
@@ -135,21 +137,22 @@ function updateRoster(roomData) {
         }
 
         rosterDiv.innerHTML += `
-            <div class="flex justify-between items-center py-1">
-                <span class="font-medium">${pName} ${pName === roomData.host ? '👑' : ''}</span>
+            <div class="flex justify-between items-center py-2 border-b last:border-0">
+                <span class="font-medium">${pName} ${hostCrown} ${isOnline}</span>
                 ${teamSelectHtml}
             </div>
         `;
     });
 
-    // Add event listeners to select dropdowns
-    document.querySelectorAll('.team-selector').forEach(sel => {
-        sel.addEventListener('change', (e) => {
-            const targetPlayer = e.target.getAttribute('data-player');
-            const newTeamIndex = parseInt(e.target.value);
-            socket.emit('assignTeam', { roomCode: myRoom, targetPlayer, newTeamIndex });
+    if (isHost) {
+        document.querySelectorAll('.team-selector').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const targetPlayer = e.target.getAttribute('data-player');
+                const newTeamIndex = parseInt(e.target.value);
+                socket.emit('assignTeam', { roomCode: myRoom, targetPlayer, newTeamIndex });
+            });
         });
-    });
+    }
 }
 
 function updateStatusRoster(roomData) {
@@ -159,7 +162,7 @@ function updateStatusRoster(roomData) {
         const pInfo = roomData.players[pName];
         const statusIcon = pInfo.wordsSubmitted ? '✅' : '✍️';
         statusDiv.innerHTML += `
-            <div class="flex justify-between">
+            <div class="flex justify-between py-1">
                 <span>${pName}</span>
                 <span>${pInfo.wordCount} / ${myWordsReq} ${statusIcon}</span>
             </div>
@@ -171,7 +174,6 @@ document.getElementById('btn-start-submit').addEventListener('click', () => {
     socket.emit('startGamePhase', myRoom);
 });
 
-// --- Word Submission ---
 function setupWordInputs() {
     const container = document.getElementById('word-inputs');
     container.innerHTML = ''; 
@@ -179,7 +181,6 @@ function setupWordInputs() {
         container.innerHTML += `<input type="text" class="word-entry w-full p-3 border rounded-lg" placeholder="Noun ${i+1}">`;
     }
 
-    // Real-time counting
     document.querySelectorAll('.word-entry').forEach(input => {
         input.addEventListener('input', () => {
             const currentCount = Array.from(document.querySelectorAll('.word-entry'))
@@ -199,11 +200,35 @@ document.getElementById('btn-submit-words').addEventListener('click', () => {
     }
     
     socket.emit('submitWords', { roomCode: myRoom, playerName: myName, words });
-    document.getElementById('btn-submit-words').classList.add('hidden');
-    document.getElementById('word-inputs').classList.add('hidden');
+    document.getElementById('submission-area').classList.add('hidden');
+    document.getElementById('waiting-area').classList.remove('hidden');
 });
 
-// --- Gameplay ---
+// Hurry Up Logic
+document.getElementById('btn-hurry-up').addEventListener('click', () => {
+    socket.emit('sendHurryUp', myRoom);
+    document.getElementById('btn-hurry-up').innerText = "Nudge Sent!";
+    document.getElementById('btn-hurry-up').classList.add('bg-gray-400');
+    document.getElementById('btn-hurry-up').disabled = true;
+    setTimeout(() => {
+        document.getElementById('btn-hurry-up').innerText = '📣 Send "Hurry Up" Nudge';
+        document.getElementById('btn-hurry-up').classList.remove('bg-gray-400');
+        document.getElementById('btn-hurry-up').disabled = false;
+    }, 5000); // Prevent spamming
+});
+
+socket.on('receiveHurryUp', () => {
+    const toast = document.getElementById('toast-container');
+    toast.classList.remove('hidden');
+    playBeep(300, 0.2, 'square'); // Aggressive beep
+    setTimeout(() => playBeep(300, 0.2, 'square'), 250);
+    
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+});
+
+// Gameplay
 socket.on('startRound', (roomData) => {
     updateGameUI(roomData);
     showScreen('game');
@@ -213,12 +238,11 @@ function updateGameUI(roomData) {
     const roundNames = ['Round 1: Describe', 'Round 2: Act It Out', 'Round 3: One Word'];
     document.getElementById('displayRound').innerText = roundNames[roomData.round - 1];
     
-    // Update Scoreboard
     const scoreboard = document.getElementById('scoreboard');
     scoreboard.innerHTML = roomData.teams.map((t, i) => `<div>T${i+1}: <span class="text-indigo-600">${t.score}</span></div>`).join('');
     
     const currentTeam = roomData.teams[roomData.turn.teamIndex];
-    if(currentTeam.members.length === 0) return; // Wait for backend to skip
+    if(currentTeam.members.length === 0) return; 
 
     const activePlayerName = currentTeam.members[roomData.turn.playerIndex];
     const isMyTurn = activePlayerName === myName;
@@ -241,7 +265,6 @@ document.getElementById('btn-start-turn').addEventListener('click', () => {
     document.getElementById('btn-start-turn').classList.add('hidden');
 });
 
-// Timer Logic with Audio Beep
 socket.on('turnStarted', ({ time, activePlayerName, word }) => {
     const isMyTurn = activePlayerName === myName;
     
@@ -261,15 +284,14 @@ socket.on('turnStarted', ({ time, activePlayerName, word }) => {
         timeLeft--;
         timerDisplay.innerText = `00:${timeLeft.toString().padStart(2, '0')}`;
         
-        // 10 Second Warning!
         if (timeLeft === 10) {
             timerDisplay.classList.remove('text-green-500');
             timerDisplay.classList.add('text-red-500');
-            playBeep(800, 0.1); // Short beep
+            playBeep(800, 0.1); 
         } else if (timeLeft < 10 && timeLeft > 0) {
             playBeep(800, 0.1);
         } else if (timeLeft === 0) {
-            playBeep(400, 0.5); // Long low beep for time out
+            playBeep(400, 0.5); 
         }
         
         if (timeLeft <= 0) {
@@ -297,5 +319,5 @@ socket.on('gameOver', (roomData) => {
     clearInterval(turnInterval);
     let scores = roomData.teams.map((t, i) => `Team ${i+1}: ${t.score}`).join('\n');
     alert(`Game Over!\n\n${scores}`);
-    localStorage.removeItem('niab_roomCode'); // Clear session
+    localStorage.removeItem('niab_roomCode'); 
 });
