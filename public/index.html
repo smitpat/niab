@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nouns in a Bucket</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans antialiased p-4">
+    <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 mt-4">
+        <h1 class="text-3xl font-bold text-center text-indigo-600 mb-6">Nouns in a Bucket</h1>
+
+        <div id="landing-screen" class="space-y-4">
+            <input type="text" id="playerName" placeholder="Your Name" class="w-full p-3 border rounded-lg text-lg">
+            
+            <div class="border-t pt-4">
+                <h3 class="font-bold mb-2">Join Game</h3>
+                <div class="flex space-x-2">
+                    <input type="text" id="joinCode" placeholder="Room Code" class="w-2/3 p-3 border rounded-lg uppercase">
+                    <button id="btn-join" class="w-1/3 bg-blue-500 text-white font-bold rounded-lg shadow active:bg-blue-600">Join</button>
+                </div>
+            </div>
+
+            <div class="border-t pt-4 space-y-2">
+                <h3 class="font-bold">Host New Game</h3>
+                <label class="block text-sm">Teams (2-4)</label>
+                <input type="number" id="numTeams" value="2" min="2" max="4" class="w-full p-2 border rounded-lg">
+                <label class="block text-sm">Words per Player</label>
+                <input type="number" id="wordsReq" value="5" min="1" class="w-full p-2 border rounded-lg">
+                <label class="block text-sm">Base Timer (seconds)</label>
+                <input type="number" id="baseTime" value="60" min="10" class="w-full p-2 border rounded-lg">
+                <button id="btn-create" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow active:bg-indigo-600 mt-2">Create Room</button>
+            </div>
+        </div>
+
+        <div id="lobby-screen" class="hidden space-y-4 text-center">
+            <h2 class="text-2xl font-bold">Room Code: <span id="displayRoomCode" class="text-indigo-600"></span></h2>
+            <p id="playerCount" class="text-gray-500">Waiting for players...</p>
+            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-3 rounded-lg shadow active:bg-green-600">Start Writing Words</button>
+        </div>
+
+        <div id="submit-screen" class="hidden space-y-4">
+            <h2 class="text-xl font-bold text-center">Enter your Nouns!</h2>
+            <div id="word-inputs" class="space-y-2"></div>
+            <button id="btn-submit-words" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow">Toss in Bucket</button>
+            <p id="waiting-msg" class="hidden text-center text-gray-500">Waiting for others to finish...</p>
+        </div>
+
+        <div id="game-screen" class="hidden flex flex-col items-center space-y-6">
+            <div class="w-full flex justify-between text-lg font-bold border-b pb-2">
+                <span id="displayRound" class="text-blue-600">Round 1</span>
+                <span id="displayTimer" class="text-red-500">00:00</span>
+            </div>
+            <h2 id="turn-indicator" class="text-2xl font-bold text-center"></h2>
+            
+            <div id="active-player-view" class="hidden w-full space-y-4 flex flex-col items-center">
+                <div id="current-word" class="text-4xl font-black py-8 text-center text-indigo-700 w-full bg-indigo-50 rounded-xl">WORD</div>
+                <div class="flex w-full space-x-4">
+                    <button id="btn-got-it" class="w-full bg-green-500 text-white font-bold p-4 rounded-xl shadow text-xl">Got It!</button>
+                </div>
+            </div>
+
+            <div id="waiting-player-view" class="w-full text-center py-8">
+                <button id="btn-start-turn" class="hidden w-full bg-indigo-500 text-white font-bold p-4 rounded-xl shadow text-xl">Start Timer</button>
+            </div>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
