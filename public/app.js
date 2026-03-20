@@ -216,7 +216,6 @@ function updateGameUI(roomData) {
     const roundNames = ['Round 1: Catchphrase', 'Round 2: Charades', 'Round 3: One Word'];
     document.getElementById('displayRound').innerText = roundNames[roomData.round - 1] || 'Bonus Round';
     
-    // NEW GRID SCOREBOARD
     const scoreboard = document.getElementById('scoreboard');
     scoreboard.innerHTML = roomData.teams.map(t => {
         return `
@@ -227,10 +226,11 @@ function updateGameUI(roomData) {
         `;
     }).join('');
     
-    const currentTeam = roomData.teams[roomData.turn.teamIndex];
+    const currentTeamIdx = roomData.turn.teamIndex;
+    const currentTeam = roomData.teams[currentTeamIdx];
     if(currentTeam.members.length === 0) return; 
 
-    const activePlayerName = currentTeam.members[roomData.turn.playerIndex];
+    const activePlayerName = currentTeam.members[roomData.turn.playerIndices[currentTeamIdx]];
     const isMyTurn = activePlayerName === myName;
     
     activePlayerNameGlobal = activePlayerName;
@@ -239,6 +239,16 @@ function updateGameUI(roomData) {
     const isTeammate = (myTeamIndex === roomData.turn.teamIndex) && !isMyTurn;
 
     document.getElementById('turn-indicator').innerText = isMyTurn ? "It's your turn!" : `${activePlayerName}'s Turn (${currentTeam.name})`;
+
+    // Check for Carry-Over time visually before turn starts
+    const timerDisplay = document.getElementById('displayTimer');
+    if (roomData.carryOver && roomData.carryOver.teamIndex === currentTeamIdx) {
+        timerDisplay.innerText = `00:${roomData.carryOver.time.toString().padStart(2, '0')}`;
+        timerDisplay.classList.replace('text-red-500', 'text-yellow-500'); // Visually indicate carry-over
+    } else {
+        timerDisplay.innerText = `00:${roomData.settings.baseTime.toString().padStart(2, '0')}`;
+        timerDisplay.classList.remove('text-yellow-500', 'text-red-500');
+    }
 
     document.getElementById('btn-pause').classList.add('hidden');
 
@@ -270,7 +280,7 @@ function startTimerClientSide(time) {
 
     const timerDisplay = document.getElementById('displayTimer');
     timerDisplay.innerText = `00:${currentTimeLeft.toString().padStart(2, '0')}`;
-    timerDisplay.classList.remove('text-red-500');
+    timerDisplay.classList.remove('text-red-500', 'text-yellow-500');
     timerDisplay.classList.add(currentTimeLeft <= 10 ? 'text-red-500' : 'text-green-500');
 
     turnInterval = setInterval(() => {
@@ -326,7 +336,10 @@ document.getElementById('btn-skip').addEventListener('click', () => {
     socket.emit('skipWord', myRoom);
 });
 
-document.getElementById('btn-got-it').addEventListener('click', () => socket.emit('wordGuessed', myRoom));
+// NEW: Emits the time left when a word is guessed so the server knows how much carry-over to award
+document.getElementById('btn-got-it').addEventListener('click', () => {
+    socket.emit('wordGuessed', { roomCode: myRoom, timeLeft: currentTimeLeft });
+});
 
 socket.on('nextWord', (newWord) => {
     document.getElementById('current-word').innerText = newWord;
@@ -335,29 +348,30 @@ socket.on('nextWord', (newWord) => {
 socket.on('roundOver', (roomData) => {
     clearInterval(turnInterval); isTurnActive = false;
     document.getElementById('btn-pause').classList.add('hidden');
-    alert('Round Over! Bucket is empty.');
+    
+    let msg = 'Round Over! Bucket is empty.';
+    if (roomData.carryOver) {
+        msg += `\n\n${activePlayerNameGlobal} keeps ${roomData.carryOver.time} seconds for the next round!`;
+    }
+    alert(msg);
+    
     updateGameUI(roomData);
 });
 
-// --- NEW WINNER SCREEN LOGIC ---
 socket.on('gameOver', (roomData) => {
     clearInterval(turnInterval); isTurnActive = false;
     document.getElementById('btn-pause').classList.add('hidden');
     
-    // Hide game banner to give full screen to celebration
     document.getElementById('game-banner').classList.add('hidden');
     
-    // Find the max score
     let maxScore = -1;
     roomData.teams.forEach(t => { if(t.score > maxScore) maxScore = t.score; });
     
-    // Find all teams with that score (to handle ties)
     const winningTeams = roomData.teams.filter(t => t.score === maxScore);
     const winnerNames = winningTeams.map(t => t.name).join(' & ');
     
     document.getElementById('winner-text').innerText = winnerNames;
     
-    // Populate the final scoreboard list
     const finalScoresDiv = document.getElementById('final-scores');
     finalScoresDiv.innerHTML = roomData.teams.sort((a,b) => b.score - a.score).map((t, i) => {
         let medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : ''));
@@ -366,9 +380,9 @@ socket.on('gameOver', (roomData) => {
     
     showScreen('winner');
     launchConfetti();
-    playBeep(523.25, 0.1, 'square'); // C5
-    setTimeout(() => playBeep(659.25, 0.1, 'square'), 150); // E5
-    setTimeout(() => playBeep(783.99, 0.4, 'square'), 300); // G5
+    playBeep(523.25, 0.1, 'square'); 
+    setTimeout(() => playBeep(659.25, 0.1, 'square'), 150); 
+    setTimeout(() => playBeep(783.99, 0.4, 'square'), 300); 
     
     localStorage.removeItem('niab_roomCode'); 
 });
