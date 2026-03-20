@@ -25,15 +25,32 @@ window.onload = () => {
     }
 };
 
-const screens = { landing: document.getElementById('landing-screen'), lobby: document.getElementById('lobby-screen'), submit: document.getElementById('submit-screen'), review: document.getElementById('team-review-screen'), game: document.getElementById('game-screen') };
+const screens = { 
+    landing: document.getElementById('landing-screen'), 
+    lobby: document.getElementById('lobby-screen'), 
+    submit: document.getElementById('submit-screen'), 
+    review: document.getElementById('team-review-screen'), 
+    game: document.getElementById('game-screen'),
+    winner: document.getElementById('winner-screen')
+};
 
 function showScreen(screenName) {
     Object.values(screens).forEach(s => s.classList.add('hidden'));
     screens[screenName].classList.remove('hidden');
     if (screenName !== 'landing') {
         document.getElementById('game-banner').classList.remove('hidden');
-        document.getElementById('bannerRoomCode').innerText = myRoom;
-        document.getElementById('bannerPlayer').innerText = myName;
+    }
+}
+
+function updateBanner(roomData) {
+    document.getElementById('bannerRoomCode').innerText = myRoom;
+    document.getElementById('bannerPlayer').innerText = myName;
+    
+    if (roomData && roomData.players[myName] && roomData.players[myName].team !== -1) {
+        document.getElementById('bannerTeamContainer').classList.remove('hidden');
+        document.getElementById('bannerTeam').innerText = roomData.teams[roomData.players[myName].team].name;
+    } else {
+        document.getElementById('bannerTeamContainer').classList.add('hidden');
     }
 }
 
@@ -47,6 +64,22 @@ function playBeep(frequency = 800, duration = 0.1, type = 'sine') {
         osc.connect(gain); gain.connect(ctx.destination);
         osc.start(); osc.stop(ctx.currentTime + duration);
     } catch (e) { console.log("Audio not supported"); }
+}
+
+function launchConfetti() {
+    const container = document.getElementById('confetti-container');
+    container.classList.remove('hidden');
+    const colors = ['#fde047', '#a3e635', '#38bdf8', '#c084fc', '#f472b6', '#ef4444'];
+    
+    for(let i=0; i<80; i++) {
+        let conf = document.createElement('div');
+        conf.classList.add('confetti-piece');
+        conf.style.left = Math.random() * 100 + 'vw';
+        conf.style.animationDuration = (Math.random() * 3 + 2) + 's';
+        conf.style.animationDelay = Math.random() * 2 + 's';
+        conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        container.appendChild(conf);
+    }
 }
 
 document.getElementById('btn-create').addEventListener('click', () => {
@@ -79,6 +112,8 @@ socket.on('updateRoom', (roomData) => {
 });
 
 function renderLobbyOrGame(roomData) {
+    updateBanner(roomData);
+    
     if (roomData.state === 'lobby') { updateLobbyRoster(roomData); showScreen('lobby'); } 
     else if (roomData.state === 'submitting') {
         if (!roomData.players[myName].wordsSubmitted && document.getElementById('word-inputs').innerHTML === '') setupWordInputs();
@@ -172,19 +207,24 @@ function renderTeamReview(roomData) {
 
 document.getElementById('btn-confirm-teams').addEventListener('click', () => socket.emit('confirmTeamsAndStart', myRoom));
 
-// --- GAMEPLAY OVERHAUL ---
+// --- GAMEPLAY ---
 socket.on('startRound', (roomData) => {
     updateGameUI(roomData); showScreen('game');
 });
 
 function updateGameUI(roomData) {
-    const roundNames = ['Round 1: Describe', 'Round 2: Act It Out', 'Round 3: One Word'];
-    document.getElementById('displayRound').innerText = roundNames[roomData.round - 1];
+    const roundNames = ['Round 1: Catchphrase', 'Round 2: Charades', 'Round 3: One Word'];
+    document.getElementById('displayRound').innerText = roundNames[roomData.round - 1] || 'Bonus Round';
     
+    // NEW GRID SCOREBOARD
     const scoreboard = document.getElementById('scoreboard');
     scoreboard.innerHTML = roomData.teams.map(t => {
-        const shortName = t.name.length > 10 ? t.name.substring(0, 8) + '...' : t.name;
-        return `<div>${shortName}: <span class="text-indigo-600">${t.score}</span></div>`;
+        return `
+            <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-center leading-tight">
+                <span class="text-gray-700 font-bold mb-1 truncate">${t.name}</span>
+                <span class="text-indigo-600 font-black text-2xl">${t.score}</span>
+            </div>
+        `;
     }).join('');
     
     const currentTeam = roomData.teams[roomData.turn.teamIndex];
@@ -259,7 +299,6 @@ socket.on('turnStarted', ({ time, activePlayerName, word }) => {
     startTimerClientSide(time);
 });
 
-// --- PAUSE & SKIP EVENTS ---
 document.getElementById('btn-pause').addEventListener('click', () => {
     if (!isTurnActive) return;
     socket.emit('pauseGame', { roomCode: myRoom, timeLeft: currentTimeLeft, playerName: myName });
@@ -287,7 +326,6 @@ document.getElementById('btn-skip').addEventListener('click', () => {
     socket.emit('skipWord', myRoom);
 });
 
-// --- CORE PLAY ---
 document.getElementById('btn-got-it').addEventListener('click', () => socket.emit('wordGuessed', myRoom));
 
 socket.on('nextWord', (newWord) => {
@@ -301,10 +339,36 @@ socket.on('roundOver', (roomData) => {
     updateGameUI(roomData);
 });
 
+// --- NEW WINNER SCREEN LOGIC ---
 socket.on('gameOver', (roomData) => {
     clearInterval(turnInterval); isTurnActive = false;
     document.getElementById('btn-pause').classList.add('hidden');
-    let scores = roomData.teams.map((t, i) => `${t.name}: ${t.score}`).join('\n');
-    alert(`Game Over!\n\n${scores}`);
+    
+    // Hide game banner to give full screen to celebration
+    document.getElementById('game-banner').classList.add('hidden');
+    
+    // Find the max score
+    let maxScore = -1;
+    roomData.teams.forEach(t => { if(t.score > maxScore) maxScore = t.score; });
+    
+    // Find all teams with that score (to handle ties)
+    const winningTeams = roomData.teams.filter(t => t.score === maxScore);
+    const winnerNames = winningTeams.map(t => t.name).join(' & ');
+    
+    document.getElementById('winner-text').innerText = winnerNames;
+    
+    // Populate the final scoreboard list
+    const finalScoresDiv = document.getElementById('final-scores');
+    finalScoresDiv.innerHTML = roomData.teams.sort((a,b) => b.score - a.score).map((t, i) => {
+        let medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : ''));
+        return `<div class="flex justify-between border-b pb-1 last:border-0"><span class="font-bold">${medal} ${t.name}</span><span class="text-indigo-600 font-black">${t.score}</span></div>`;
+    }).join('');
+    
+    showScreen('winner');
+    launchConfetti();
+    playBeep(523.25, 0.1, 'square'); // C5
+    setTimeout(() => playBeep(659.25, 0.1, 'square'), 150); // E5
+    setTimeout(() => playBeep(783.99, 0.4, 'square'), 300); // G5
+    
     localStorage.removeItem('niab_roomCode'); 
 });
