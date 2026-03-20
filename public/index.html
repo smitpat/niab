@@ -5,8 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nouns in a Bucket</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Animation for the hurry up toast */
+        @keyframes slideDown {
+            0% { transform: translateY(-100%); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        .toast-animate { animation: slideDown 0.3s ease-out forwards; }
+    </style>
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans antialiased p-4 pb-16">
+    
+    <div id="toast-container" class="hidden fixed top-4 left-0 w-full z-50 flex justify-center px-4">
+        <div class="bg-red-500 text-white font-black text-xl px-6 py-4 rounded-xl shadow-2xl border-4 border-red-700 toast-animate">
+            🚨 HURRY UP! PEOPLE ARE WAITING! 🚨
+        </div>
+    </div>
+
     <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 mt-4">
         <h1 class="text-3xl font-bold text-center text-indigo-600 mb-6">Nouns in a Bucket</h1>
 
@@ -17,7 +32,7 @@
             <div class="border-t pt-4">
                 <h3 class="font-bold mb-2">Join Game</h3>
                 <div class="flex space-x-2">
-                    <input type="text" id="joinCode" placeholder="Room Code" class="w-2/3 p-3 border rounded-lg uppercase">
+                    <input type="text" id="joinCode" placeholder="Room Code" class="w-2/3 p-3 border rounded-lg uppercase text-xl font-bold text-center">
                     <button id="btn-join" class="w-1/3 bg-blue-500 text-white font-bold rounded-lg shadow active:bg-blue-600">Join</button>
                 </div>
             </div>
@@ -35,26 +50,32 @@
         </div>
 
         <div id="lobby-screen" class="hidden space-y-4 text-center">
-            <h2 class="text-2xl font-bold mb-4">Waiting in Lobby...</h2>
+            <h2 class="text-lg font-bold text-gray-500">Room Code</h2>
+            <div id="displayRoomCode" class="text-6xl font-black text-indigo-600 tracking-widest bg-indigo-50 py-4 rounded-xl border-2 border-indigo-200"></div>
             
-            <div class="bg-gray-50 p-4 rounded-lg border text-left">
+            <div class="bg-gray-50 p-4 rounded-lg border text-left mt-6">
                 <h3 class="font-bold border-b pb-2 mb-2 text-gray-700">Players Joined</h3>
-                <div id="player-roster" class="space-y-2 max-h-48 overflow-y-auto">
-                    </div>
+                <div id="player-roster" class="space-y-2 max-h-48 overflow-y-auto"></div>
             </div>
 
-            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-3 rounded-lg shadow active:bg-green-600 mt-4">Start Writing Words</button>
+            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-4 text-xl rounded-lg shadow active:bg-green-600 mt-4">Start Game</button>
         </div>
 
         <div id="submit-screen" class="hidden space-y-4">
-            <h2 class="text-xl font-bold text-center">Enter your Nouns!</h2>
-            <div id="word-inputs" class="space-y-2"></div>
-            <button id="btn-submit-words" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow">Toss in Bucket</button>
+            <div id="submission-area">
+                <h2 class="text-xl font-bold text-center">Enter your Nouns!</h2>
+                <div id="word-inputs" class="space-y-2 mt-4"></div>
+                <button id="btn-submit-words" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow mt-4">Toss in Bucket</button>
+            </div>
             
+            <div id="waiting-area" class="hidden space-y-4">
+                <div class="text-center p-4 bg-green-100 text-green-800 rounded-lg font-bold">Words Submitted!</div>
+                <button id="btn-hurry-up" class="w-full bg-red-500 text-white font-bold p-3 rounded-lg shadow active:bg-red-600 transition-colors">📣 Send "Hurry Up" Nudge</button>
+            </div>
+
             <div id="submission-status" class="bg-gray-50 p-4 rounded-lg border mt-6">
                 <h3 class="font-bold text-sm text-gray-500 mb-2">Word Progress</h3>
-                <div id="status-roster" class="space-y-1 text-sm">
-                    </div>
+                <div id="status-roster" class="space-y-1 text-sm"></div>
             </div>
         </div>
 
@@ -64,10 +85,10 @@
                 <span id="displayTimer" class="text-red-500 text-2xl">00:00</span>
             </div>
             
-            <div id="scoreboard" class="flex justify-center space-x-4 w-full text-sm font-bold text-gray-600">
+            <div id="scoreboard" class="flex justify-center space-x-6 w-full text-lg font-black bg-gray-100 p-3 rounded-xl border border-gray-300">
                 </div>
 
-            <h2 id="turn-indicator" class="text-2xl font-bold text-center mt-4"></h2>
+            <h2 id="turn-indicator" class="text-2xl font-bold text-center mt-2"></h2>
             
             <div id="active-player-view" class="hidden w-full space-y-4 flex flex-col items-center">
                 <div id="current-word" class="text-4xl font-black py-8 text-center text-indigo-700 w-full bg-indigo-50 rounded-xl">WORD</div>
@@ -82,8 +103,8 @@
         </div>
     </div>
 
-    <div id="game-banner" class="hidden fixed bottom-0 left-0 w-full bg-slate-800 text-white text-center p-2 text-sm shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-        Room Code: <span id="bannerRoomCode" class="font-bold text-indigo-300 tracking-wider"></span> | Playing as <span id="bannerPlayer" class="font-bold"></span>
+    <div id="game-banner" class="hidden fixed bottom-0 left-0 w-full bg-slate-900 text-white text-center p-3 text-sm shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
+        Room: <span id="bannerRoomCode" class="font-black text-indigo-300 tracking-widest text-base"></span> | Player: <span id="bannerPlayer" class="font-bold"></span>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
