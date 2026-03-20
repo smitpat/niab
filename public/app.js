@@ -1,362 +1,71 @@
-const socket = io();
-
-let myRoom = '';
-let myName = '';
-let isHost = false;
-let myWordsReq = 5;
-let numTeams = 2;
-let turnInterval;
-
-window.onload = () => {
-    const savedName = localStorage.getItem('niab_playerName');
-    const savedRoom = localStorage.getItem('niab_roomCode');
-    if (savedName && savedRoom) {
-        document.getElementById('playerName').value = savedName;
-        document.getElementById('btn-rejoin').classList.remove('hidden');
-        document.getElementById('btn-rejoin').onclick = () => {
-            myName = savedName;
-            socket.emit('joinRoom', { roomCode: savedRoom, playerName: myName });
-        };
-    }
-};
-
-const screens = {
-    landing: document.getElementById('landing-screen'),
-    lobby: document.getElementById('lobby-screen'),
-    submit: document.getElementById('submit-screen'),
-    review: document.getElementById('team-review-screen'),
-    game: document.getElementById('game-screen')
-};
-
-function showScreen(screenName) {
-    Object.values(screens).forEach(s => s.classList.add('hidden'));
-    screens[screenName].classList.remove('hidden');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nouns in a Bucket</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideDown { 0% { transform: translateY(-100%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        .toast-animate { animation: slideDown 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans antialiased p-4 pb-16">
     
-    if (screenName !== 'landing') {
-        document.getElementById('game-banner').classList.remove('hidden');
-        document.getElementById('bannerRoomCode').innerText = myRoom;
-        document.getElementById('bannerPlayer').innerText = myName;
-    }
-}
+    <div id="toast-container" class="hidden fixed top-4 left-0 w-full z-50 flex justify-center px-4">
+        <div class="bg-red-500 text-white font-black text-xl px-6 py-4 rounded-xl shadow-2xl border-4 border-red-700 toast-animate">
+            🚨 HURRY UP! PEOPLE ARE WAITING! 🚨
+        </div>
+    </div>
 
-function playBeep(frequency = 800, duration = 0.1, type = 'sine') {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-        gain.gain.setValueAtTime(0.5, ctx.currentTime);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + duration);
-    } catch (e) { console.log("Audio not supported"); }
-}
-
-document.getElementById('btn-create').addEventListener('click', () => {
-    myName = document.getElementById('playerName').value || 'Host';
-    const settings = {
-        numTeams: parseInt(document.getElementById('numTeams').value),
-        wordsPerPlayer: parseInt(document.getElementById('wordsReq').value),
-        baseTime: parseInt(document.getElementById('baseTime').value)
-    };
-    myWordsReq = settings.wordsPerPlayer;
-    numTeams = settings.numTeams;
-    socket.emit('createRoom', { playerName: myName, settings });
-});
-
-document.getElementById('btn-join').addEventListener('click', () => {
-    myName = document.getElementById('playerName').value || 'Player';
-    const roomCode = document.getElementById('joinCode').value.toUpperCase();
-    socket.emit('joinRoom', { roomCode, playerName: myName });
-});
-
-socket.on('errorMsg', (msg) => alert(msg));
-
-socket.on('roomJoined', ({ roomCode, isHost: hostStatus, roomData }) => {
-    myRoom = roomCode;
-    isHost = hostStatus;
-    myWordsReq = roomData.settings.wordsPerPlayer;
-    numTeams = roomData.settings.numTeams;
-    
-    localStorage.setItem('niab_playerName', myName);
-    localStorage.setItem('niab_roomCode', myRoom);
-
-    document.getElementById('displayRoomCode').innerText = roomCode;
-    renderLobbyOrGame(roomData);
-});
-
-socket.on('updateRoom', (roomData) => {
-    isHost = (roomData.host === myName);
-    
-    if (isHost && roomData.state === 'lobby') {
-        document.getElementById('btn-start-submit').classList.remove('hidden');
-    } else {
-        document.getElementById('btn-start-submit').classList.add('hidden');
-    }
-
-    renderLobbyOrGame(roomData);
-});
-
-function renderLobbyOrGame(roomData) {
-    if (roomData.state === 'lobby') {
-        updateLobbyRoster(roomData);
-        showScreen('lobby');
-    } else if (roomData.state === 'submitting') {
-        if (!roomData.players[myName].wordsSubmitted && document.getElementById('word-inputs').innerHTML === '') {
-            setupWordInputs();
-        }
-        updateStatusRoster(roomData);
-        showScreen('submit');
-    } else if (roomData.state === 'team_review') {
-        renderTeamReview(roomData);
-        showScreen('review');
-    } else if (roomData.state === 'playing') {
-        updateGameUI(roomData);
-        showScreen('game');
-    }
-}
-
-function updateLobbyRoster(roomData) {
-    const rosterDiv = document.getElementById('player-roster');
-    rosterDiv.innerHTML = '';
-    
-    Object.keys(roomData.players).forEach(pName => {
-        const pInfo = roomData.players[pName];
-        const isOnline = pInfo.online ? '' : '<span class="text-red-500 text-xs">(Offline)</span>';
-        const hostCrown = pName === roomData.host ? '👑' : '';
+    <div id="app" class="relative max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 mt-4">
         
-        rosterDiv.innerHTML += `
-            <div class="flex justify-between items-center py-2 border-b last:border-0">
-                <span class="font-medium">${pName} ${hostCrown} ${isOnline}</span>
-                <span class="text-sm text-gray-500">Unassigned</span>
-            </div>
-        `;
-    });
-}
+        <div id="pause-overlay" class="hidden absolute inset-0 bg-white/90 backdrop-blur-sm z-40 flex flex-col items-center justify-center p-4 text-center">
+            <h2 class="text-4xl font-black text-indigo-600 mb-2">PAUSED</h2>
+            <p id="pause-text" class="text-gray-600 font-bold mb-8">Paused by Player</p>
+            <button id="btn-resume" class="w-full max-w-xs bg-indigo-500 text-white font-black p-4 rounded-xl shadow-lg text-xl active:bg-indigo-600 border-b-4 border-indigo-700">▶️ Resume Game</button>
+        </div>
 
-function updateStatusRoster(roomData) {
-    const statusDiv = document.getElementById('status-roster');
-    statusDiv.innerHTML = '';
-    Object.keys(roomData.players).forEach(pName => {
-        const pInfo = roomData.players[pName];
-        const statusIcon = pInfo.wordsSubmitted ? '✅' : '✍️';
-        statusDiv.innerHTML += `
-            <div class="flex justify-between py-1">
-                <span>${pName}</span>
-                <span>${pInfo.wordCount} / ${myWordsReq} ${statusIcon}</span>
-            </div>
-        `;
-    });
-}
+        <h1 class="text-3xl font-bold text-center text-indigo-600 mb-6">Nouns in a Bucket</h1>
 
-document.getElementById('btn-start-submit').addEventListener('click', () => {
-    socket.emit('startGamePhase', myRoom);
-});
-
-function setupWordInputs() {
-    const container = document.getElementById('word-inputs');
-    container.innerHTML = ''; 
-    for (let i = 0; i < myWordsReq; i++) {
-        container.innerHTML += `<input type="text" class="word-entry w-full p-3 border rounded-lg" placeholder="Noun ${i+1}">`;
-    }
-
-    document.querySelectorAll('.word-entry').forEach(input => {
-        input.addEventListener('input', () => {
-            const currentCount = Array.from(document.querySelectorAll('.word-entry'))
-                                     .filter(inp => inp.value.trim() !== '').length;
-            socket.emit('updateWordCount', { roomCode: myRoom, playerName: myName, count: currentCount });
-        });
-    });
-}
-
-document.getElementById('btn-submit-words').addEventListener('click', () => {
-    const inputs = document.querySelectorAll('.word-entry');
-    const words = Array.from(inputs).map(input => input.value.trim()).filter(w => w !== '');
-    
-    if (words.length < myWordsReq) {
-        alert('Please fill out all your words!');
-        return;
-    }
-    
-    socket.emit('submitWords', { roomCode: myRoom, playerName: myName, words });
-    document.getElementById('submission-area').classList.add('hidden');
-    document.getElementById('waiting-area').classList.remove('hidden');
-});
-
-document.getElementById('btn-hurry-up').addEventListener('click', () => {
-    socket.emit('sendHurryUp', myRoom);
-    document.getElementById('btn-hurry-up').innerText = "Nudge Sent!";
-    document.getElementById('btn-hurry-up').classList.add('bg-gray-400');
-    document.getElementById('btn-hurry-up').disabled = true;
-    setTimeout(() => {
-        document.getElementById('btn-hurry-up').innerText = '📣 Send "Hurry Up" Nudge';
-        document.getElementById('btn-hurry-up').classList.remove('bg-gray-400');
-        document.getElementById('btn-hurry-up').disabled = false;
-    }, 5000);
-});
-
-socket.on('receiveHurryUp', () => {
-    const toast = document.getElementById('toast-container');
-    toast.classList.remove('hidden');
-    playBeep(300, 0.2, 'square'); 
-    setTimeout(() => playBeep(300, 0.2, 'square'), 250);
-    setTimeout(() => toast.classList.add('hidden'), 3000);
-});
-
-// --- NEW: Team Review Logic ---
-function renderTeamReview(roomData) {
-    const rosterDiv = document.getElementById('team-review-roster');
-    rosterDiv.innerHTML = '';
-
-    roomData.teams.forEach((team, teamIndex) => {
-        let membersHtml = team.members.map(pName => {
-            const hostCrown = pName === roomData.host ? '👑' : '';
-            
-            // If user is host, show dropdown to allow trades. Otherwise just show text.
-            let controlHtml = '';
-            if (isHost) {
-                let options = '';
-                for(let i = 0; i < roomData.settings.numTeams; i++) {
-                    options += `<option value="${i}" ${teamIndex === i ? 'selected' : ''}>Move to ${roomData.teams[i].name}</option>`;
-                }
-                controlHtml = `<select class="review-team-selector bg-gray-100 border rounded px-1 text-xs py-1" data-player="${pName}">${options}</select>`;
-            }
-
-            return `
-                <div class="flex justify-between items-center py-2 border-b last:border-0">
-                    <span class="font-medium text-gray-700">${pName} ${hostCrown}</span>
-                    ${controlHtml}
+        <div id="landing-screen" class="space-y-4">
+            <input type="text" id="playerName" placeholder="Your Name" class="w-full p-3 border rounded-lg text-lg">
+            <button id="btn-rejoin" class="hidden w-full bg-yellow-500 text-white font-bold p-3 rounded-lg shadow mt-2">Rejoin Active Game</button>
+            <div class="border-t pt-4">
+                <h3 class="font-bold mb-2">Join Game</h3>
+                <div class="flex space-x-2">
+                    <input type="text" id="joinCode" placeholder="Room Code" class="w-2/3 p-3 border rounded-lg uppercase text-xl font-bold text-center">
+                    <button id="btn-join" class="w-1/3 bg-blue-500 text-white font-bold rounded-lg shadow active:bg-blue-600">Join</button>
                 </div>
-            `;
-        }).join('');
-
-        if (team.members.length === 0) membersHtml = `<div class="text-sm text-gray-400 italic py-2">No members</div>`;
-
-        rosterDiv.innerHTML += `
-            <div class="bg-white border-2 border-indigo-100 rounded-xl p-4 shadow-sm">
-                <h3 class="font-black text-lg text-indigo-700 border-b-2 border-indigo-50 pb-2 mb-2">${team.name}</h3>
-                <div class="space-y-1">${membersHtml}</div>
             </div>
-        `;
-    });
+            <div class="border-t pt-4 space-y-2">
+                <h3 class="font-bold">Host New Game</h3>
+                <label class="block text-sm">Teams (2-4)</label>
+                <input type="number" id="numTeams" value="2" min="2" max="4" class="w-full p-2 border rounded-lg">
+                <label class="block text-sm">Words per Player</label>
+                <input type="number" id="wordsReq" value="5" min="1" class="w-full p-2 border rounded-lg">
+                <label class="block text-sm">Base Timer (seconds)</label>
+                <input type="number" id="baseTime" value="60" min="10" class="w-full p-2 border rounded-lg">
+                <button id="btn-create" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow active:bg-indigo-600 mt-2">Create Room</button>
+            </div>
+        </div>
 
-    if (isHost) {
-        document.getElementById('host-start-controls').classList.remove('hidden');
-        document.getElementById('waiting-for-host-start').classList.add('hidden');
-        
-        document.querySelectorAll('.review-team-selector').forEach(sel => {
-            sel.addEventListener('change', (e) => {
-                const targetPlayer = e.target.getAttribute('data-player');
-                const newTeamIndex = parseInt(e.target.value);
-                socket.emit('assignTeam', { roomCode: myRoom, targetPlayer, newTeamIndex });
-            });
-        });
-    } else {
-        document.getElementById('host-start-controls').classList.add('hidden');
-        document.getElementById('waiting-for-host-start').classList.remove('hidden');
-    }
-}
+        <div id="lobby-screen" class="hidden space-y-4 text-center">
+            <h2 class="text-lg font-bold text-gray-500">Room Code</h2>
+            <div id="displayRoomCode" class="text-6xl font-black text-indigo-600 tracking-widest bg-indigo-50 py-4 rounded-xl border-2 border-indigo-200"></div>
+            <div class="bg-gray-50 p-4 rounded-lg border text-left mt-6">
+                <h3 class="font-bold border-b pb-2 mb-2 text-gray-700">Players Joined</h3>
+                <div id="player-roster" class="space-y-2 max-h-48 overflow-y-auto"></div>
+            </div>
+            <button id="btn-start-submit" class="hidden w-full bg-green-500 text-white font-bold p-4 text-xl rounded-lg shadow active:bg-green-600 mt-4 border-b-4 border-green-700">Lock Lobby & Write Words</button>
+        </div>
 
-document.getElementById('btn-confirm-teams').addEventListener('click', () => {
-    socket.emit('confirmTeamsAndStart', myRoom);
-});
-
-// --- Gameplay ---
-socket.on('startRound', (roomData) => {
-    updateGameUI(roomData);
-    showScreen('game');
-});
-
-function updateGameUI(roomData) {
-    const roundNames = ['Round 1: Describe', 'Round 2: Act It Out', 'Round 3: One Word'];
-    document.getElementById('displayRound').innerText = roundNames[roomData.round - 1];
-    
-    const scoreboard = document.getElementById('scoreboard');
-    // Display Cute Names in Scoreboard (Truncated if too long)
-    scoreboard.innerHTML = roomData.teams.map(t => {
-        const shortName = t.name.length > 10 ? t.name.substring(0, 8) + '...' : t.name;
-        return `<div>${shortName}: <span class="text-indigo-600">${t.score}</span></div>`;
-    }).join('');
-    
-    const currentTeam = roomData.teams[roomData.turn.teamIndex];
-    if(currentTeam.members.length === 0) return; 
-
-    const activePlayerName = currentTeam.members[roomData.turn.playerIndex];
-    const isMyTurn = activePlayerName === myName;
-
-    document.getElementById('turn-indicator').innerText = isMyTurn ? "It's your turn!" : `${activePlayerName}'s Turn (${currentTeam.name})`;
-
-    document.getElementById('active-player-view').classList.add('hidden');
-    document.getElementById('waiting-player-view').classList.remove('hidden');
-
-    const startBtn = document.getElementById('btn-start-turn');
-    if (isMyTurn) {
-        startBtn.classList.remove('hidden');
-    } else {
-        startBtn.classList.add('hidden');
-    }
-}
-
-document.getElementById('btn-start-turn').addEventListener('click', () => {
-    socket.emit('startTurn', myRoom);
-    document.getElementById('btn-start-turn').classList.add('hidden');
-});
-
-socket.on('turnStarted', ({ time, activePlayerName, word }) => {
-    const isMyTurn = activePlayerName === myName;
-    
-    if (isMyTurn) {
-        document.getElementById('active-player-view').classList.remove('hidden');
-        document.getElementById('waiting-player-view').classList.add('hidden');
-        document.getElementById('current-word').innerText = word;
-    }
-
-    let timeLeft = time;
-    const timerDisplay = document.getElementById('displayTimer');
-    timerDisplay.innerText = `00:${timeLeft.toString().padStart(2, '0')}`;
-    timerDisplay.classList.remove('text-red-500');
-    timerDisplay.classList.add('text-green-500');
-
-    turnInterval = setInterval(() => {
-        timeLeft--;
-        timerDisplay.innerText = `00:${timeLeft.toString().padStart(2, '0')}`;
-        
-        if (timeLeft === 10) {
-            timerDisplay.classList.remove('text-green-500');
-            timerDisplay.classList.add('text-red-500');
-            playBeep(800, 0.1); 
-        } else if (timeLeft < 10 && timeLeft > 0) {
-            playBeep(800, 0.1);
-        } else if (timeLeft === 0) {
-            playBeep(400, 0.5); 
-        }
-        
-        if (timeLeft <= 0) {
-            clearInterval(turnInterval);
-            if (isMyTurn) socket.emit('endTurn', myRoom);
-        }
-    }, 1000);
-});
-
-document.getElementById('btn-got-it').addEventListener('click', () => {
-    socket.emit('wordGuessed', myRoom);
-});
-
-socket.on('nextWord', (newWord) => {
-    document.getElementById('current-word').innerText = newWord;
-});
-
-socket.on('roundOver', (roomData) => {
-    clearInterval(turnInterval);
-    alert('Round Over! Bucket is empty.');
-    updateGameUI(roomData);
-});
-
-socket.on('gameOver', (roomData) => {
-    clearInterval(turnInterval);
-    let scores = roomData.teams.map((t, i) => `${t.name}: ${t.score}`).join('\n');
-    alert(`Game Over!\n\n${scores}`);
-    localStorage.removeItem('niab_roomCode'); 
-});
+        <div id="submit-screen" class="hidden space-y-4">
+            <div id="submission-area">
+                <h2 class="text-xl font-bold text-center">Enter your Nouns!</h2>
+                <div id="word-inputs" class="space-y-2 mt-4"></div>
+                <button id="btn-submit-words" class="w-full bg-indigo-500 text-white font-bold p-3 rounded-lg shadow mt-4">Toss in Bucket</button>
+            </div>
+            <div id="waiting-area" class="hidden space-y-4">
+                <div class="text-center p-4 bg-green-100 text-green-800 rounded-lg font-bold">Words Submitted!</div>
+                <button id="btn-hurry-up" class="w-full bg-red-500 text-white
