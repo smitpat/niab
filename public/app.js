@@ -213,7 +213,7 @@ socket.on('startRound', (roomData) => {
 });
 
 function updateGameUI(roomData) {
-    const roundNames = ['Round 1: Catchphrase', 'Round 2: Charades', 'Round 3: One Word'];
+const roundNames = ['Round 1: Description', 'Round 2: One Word', 'Round 3: Act It Out'];
     document.getElementById('displayRound').innerText = roundNames[roomData.round - 1] || 'Bonus Round';
     
     const scoreboard = document.getElementById('scoreboard');
