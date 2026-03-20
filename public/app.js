@@ -195,13 +195,11 @@ function updateGameUI(roomData) {
     
     activePlayerNameGlobal = activePlayerName;
     
-    // Check if I am a teammate of the active player (but NOT the active player)
     const myTeamIndex = roomData.players[myName].team;
     const isTeammate = (myTeamIndex === roomData.turn.teamIndex) && !isMyTurn;
 
     document.getElementById('turn-indicator').innerText = isMyTurn ? "It's your turn!" : `${activePlayerName}'s Turn (${currentTeam.name})`;
 
-    // Hide pause button when turn isn't actively ticking
     document.getElementById('btn-pause').classList.add('hidden');
 
     if (isMyTurn) {
@@ -214,7 +212,6 @@ function updateGameUI(roomData) {
         document.getElementById('waiting-player-view').classList.remove('hidden');
         document.getElementById('btn-start-turn').classList.add('hidden');
         
-        // Show Skip Button exclusively to teammates
         if (isTeammate) document.getElementById('teammate-controls').classList.remove('hidden');
         else document.getElementById('teammate-controls').classList.add('hidden');
     }
@@ -225,7 +222,6 @@ document.getElementById('btn-start-turn').addEventListener('click', () => {
     document.getElementById('btn-start-turn').classList.add('hidden');
 });
 
-// Timer Abstraction for Pausing
 function startTimerClientSide(time) {
     currentTimeLeft = time;
     isTurnActive = true;
@@ -274,7 +270,7 @@ document.getElementById('btn-resume').addEventListener('click', () => socket.emi
 socket.on('gamePaused', ({ timeLeft, playerName }) => {
     clearInterval(turnInterval);
     isTurnActive = false;
-    currentTimeLeft = timeLeft; // Syncs everyone's timer immediately
+    currentTimeLeft = timeLeft; 
     document.getElementById('displayTimer').innerText = `00:${currentTimeLeft.toString().padStart(2, '0')}`;
     
     document.getElementById('pause-overlay').classList.remove('hidden');
@@ -287,7 +283,7 @@ socket.on('gameResumed', () => {
 });
 
 document.getElementById('btn-skip').addEventListener('click', () => {
-    if (!isTurnActive) return; // Can't skip while game is paused
+    if (!isTurnActive) return; 
     socket.emit('skipWord', myRoom);
 });
 
